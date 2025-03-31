@@ -7,11 +7,11 @@ import { ObjectId } from "mongodb";
 export async function POST(request: Request, context: { params: { id: string } }) {
   try {
     const { params } = context;
-    
+
     // Validate session
     const session = await getServerSession(authOptions);
-    if (!session || !session.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!session?.user?.id || !ObjectId.isValid(session.user.id)) {
+      return NextResponse.json({ error: "Unauthorized or invalid user ID" }, { status: 401 });
     }
 
     // Parse and validate request body
@@ -28,7 +28,7 @@ export async function POST(request: Request, context: { params: { id: string } }
     }
 
     const modelId = new ObjectId(params.id);
-    const userId = ObjectId.isValid(session.user.id) ? new ObjectId(session.user.id) : session.user.id;
+    const userId = new ObjectId(session.user.id);
 
     // Connect to MongoDB
     const db = await connectToDatabase();
@@ -46,12 +46,12 @@ export async function POST(request: Request, context: { params: { id: string } }
       createdAt: new Date(),
     };
 
-    // Update document (Ensuring savedViews exists)
+    // Ensure savedViews array exists before pushing
     const result = await modelsCollection.updateOne(
       filterQuery,
       {
-        $push: { savedViews: savedView }, 
-        $setOnInsert: { savedViews: [] }, // Ensures savedViews array exists
+        $set: { savedViews: { $ifNull: ["$savedViews", []] } }, // Ensures savedViews exists
+        $push: { savedViews: savedView },
       },
       { upsert: false }
     );
